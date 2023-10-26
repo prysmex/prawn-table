@@ -18,10 +18,8 @@ module Prawn
     #
     # See Prawn::Table::Cell.make for full options.
     #
-    def cell(options={})
-      cell = Table::Cell.make(self, options.delete(:content), options)
-      cell.draw
-      cell
+    def cell(content, options={})
+      make_cell.tap {|c| c.draw }
     end
 
     # Set up, but do not draw, a cell. Useful for creating cells with
@@ -159,41 +157,41 @@ module Prawn
       # cell returned depends on the :content argument. See the Prawn::Table
       # documentation under "Data" for allowable content types.
       #
-      def self.make(pdf, content, options={})
+      def self.make(pdf, content_or_hash, options={}, cell_style={})
         at = options.delete(:at) || [0, pdf.cursor]
+        content_or_hash = stringify_in_needed(content_or_hash)
 
-        return Cell::Image.new(pdf, at, content) if content.is_a?(Hash) && content[:image]
+        data = content_or_hash.is_a?(Hash) ? content_or_hash : {content: content_or_hash}
+        data = data.merge(options)
+        styled_data = cell_style.merge(data)
 
-        if content.is_a?(Hash)
-          options.update(content)
-          content = options[:content]
-        end
+        # handle image
+        return Cell::Image.new(pdf, at, styled_data) if data[:image]
 
-        content = content.to_s if stringify_content?(content)
-        options[:content] = content
-
-        case content
+        case (content = data[:content])
         when Prawn::Table::Cell
           content
         when String
-          Cell::Text.new(pdf, at, options)
+          Cell::Text.new(pdf, at, styled_data)
         when Prawn::Table
-          Cell::Subtable.new(pdf, at, options)
+          Cell::Subtable.new(pdf, at, styled_data)
         when Array
-          subtable = Prawn::Table.new(options[:content], pdf, {})
-          Cell::Subtable.new(pdf, at, options.merge(:content => subtable))
+          subtable = Prawn::Table.new(content, pdf, {}) # {cell_style: cell_style}.deep_merge(data)
+          Cell::Subtable.new(pdf, at, styled_data.merge(:content => subtable))
         else
           raise Errors::UnrecognizedTableContent
         end
       end
 
-      def self.stringify_content?(content)
-        return true if content.nil?
-        return true if content.kind_of?(Numeric)
-        return true if content.kind_of?(Date)
-        return true if content.kind_of?(Time)
-
-        false
+      def self.stringify_in_needed(value)
+        if value.nil? ||
+          value.kind_of?(Numeric) ||
+          value.kind_of?(Date) ||
+          value.kind_of?(Time)
+          value.to_s
+        else
+          value
+        end
       end
 
       # A small amount added to the bounding box width to cover over floating-
@@ -239,7 +237,9 @@ module Prawn
       #   cell.border_width = 2
       #
       def style(options={}, &block)
-        options.each do |k, v|
+
+        # ensure content is always set first
+        {content: nil}.merge!(options).each do |k, v|
           send("#{k}=", v) if respond_to?("#{k}=")
         end
 
