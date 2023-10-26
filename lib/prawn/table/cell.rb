@@ -159,16 +159,16 @@ module Prawn
       #
       def self.make(pdf, content_or_hash, options={}, cell_style={})
         at = options.delete(:at) || [0, pdf.cursor]
-        content_or_hash = stringify_in_needed(content_or_hash)
 
         data = content_or_hash.is_a?(Hash) ? content_or_hash : {content: content_or_hash}
+        content = data[:content] = stringify_in_needed(data[:content]) if data.key?(:content)
         data = data.merge(options)
         styled_data = cell_style.merge(data)
 
         # handle image
         return Cell::Image.new(pdf, at, styled_data) if data[:image]
 
-        case (content = data[:content])
+        case content
         when Prawn::Table::Cell
           content
         when String
